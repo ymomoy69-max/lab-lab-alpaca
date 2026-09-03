@@ -31,7 +31,7 @@ Real account performance tracked through Alpaca's official dashboard.
 </p>
 
 <p align="center">
-  <img src="docs/images/alpaca-dashboard-2.jpg" alt="Alpaca paper trading dashboard showing +9.71% daily gain" width="720" />
+  <img src="docs/images/alpaca-dashboard-2.png" alt="Alpaca paper trading dashboard showing +9.71% daily gain" width="720" />
   <br /><em>Peak session performance (+9.71% on $109,706 portfolio value)</em>
 </p>
 
@@ -45,7 +45,7 @@ The built-in control panel shows every decision, rejection reason, and live even
 </p>
 
 <p align="center">
-  <img src="docs/images/nexus-dashboard-2.jpg" alt="Nexus Agent dashboard in caution mode with +7.80% day P&L" width="720" />
+  <img src="docs/images/nexus-dashboard-2.png" alt="Nexus Agent dashboard in caution mode with +7.80% day P&L" width="720" />
   <br /><em>Feedback loop in caution mode after a strong session (+7.80% day P&L)</em>
 </p>
 
