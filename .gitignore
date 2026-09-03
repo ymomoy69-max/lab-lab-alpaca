@@ -1,0 +1,7 @@
+data/
+.env
+*.pyc
+__pycache__/
+.venv/
+venv/
+.gh-config/

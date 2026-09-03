@@ -1,0 +1,24 @@
+name: nexus-ci
+
+on:
+  push:
+    paths:
+      - "nexus-agent/**"
+  pull_request:
+    paths:
+      - "nexus-agent/**"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: nexus-agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python tools/reconcile.py
+      - run: python -m py_compile agent/*.py agent/**/*.py server/app.py

@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nexus Agent</title>
+  <style>
+    :root { --bg:#070b14; --panel:#0f1623; --accent:#22d3ee; --green:#34d399; --red:#f87171; --amber:#fbbf24; --text:#e2e8f0; --muted:#94a3b8; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: ui-sans-serif, system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    header { padding:1.25rem 2rem; border-bottom:1px solid #1e293b; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:1rem; }
+    h1 { margin:0; font-size:1.35rem; }
+    h1 span { color: var(--accent); }
+    .metrics { display:flex; gap:1rem; flex-wrap:wrap; }
+    .metric { background:var(--panel); border:1px solid #1e293b; border-radius:10px; padding:.75rem 1rem; min-width:140px; }
+    .metric label { display:block; font-size:.7rem; color:var(--muted); text-transform:uppercase; }
+    .metric strong { font-size:1.1rem; }
+    main { display:grid; grid-template-columns: 340px 1fr; gap:1rem; padding:1rem 2rem; }
+    @media (max-width:960px) { main { grid-template-columns:1fr; } }
+    .card { background:var(--panel); border:1px solid #1e293b; border-radius:12px; padding:1rem; margin-bottom:1rem; }
+    .card h2 { margin:0 0 .75rem; font-size:.8rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+    button { background:var(--accent); color:#041016; border:none; padding:.55rem 1rem; border-radius:8px; font-weight:600; cursor:pointer; margin:.25rem .35rem .25rem 0; }
+    button.secondary { background:#334155; color:var(--text); }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    #log { max-height:480px; overflow:auto; font-family: ui-monospace, monospace; font-size:.76rem; line-height:1.55; }
+    .row { padding:.3rem 0; border-bottom:1px solid #1e293b; }
+    table { width:100%; border-collapse:collapse; font-size:.78rem; }
+    td, th { text-align:left; padding:.35rem; border-bottom:1px solid #1e293b; }
+    .pill { display:inline-block; padding:.15rem .5rem; border-radius:999px; font-size:.7rem; background:#1e293b; }
+    .overlay {
+      position:fixed; inset:0; background:rgba(2,6,14,.82); display:flex; align-items:center; justify-content:center;
+      z-index:50; padding:1rem; backdrop-filter: blur(6px);
+    }
+    .overlay.hidden { display:none; }
+    .modal {
+      width:min(480px,100%); background:var(--panel); border:1px solid #334155; border-radius:16px; padding:1.5rem;
+      box-shadow:0 20px 60px rgba(0,0,0,.45);
+    }
+    .modal h2 { margin:0 0 .35rem; font-size:1.15rem; color:var(--text); text-transform:none; letter-spacing:0; }
+    .modal p { margin:0 0 1rem; color:var(--muted); font-size:.85rem; line-height:1.45; }
+    label.field { display:block; font-size:.72rem; color:var(--muted); text-transform:uppercase; margin:.7rem 0 .3rem; }
+    input[type=text], input[type=password] {
+      width:100%; background:#0b1220; border:1px solid #334155; color:var(--text);
+      border-radius:8px; padding:.65rem .75rem; font-size:.9rem;
+    }
+    input:focus { outline:1px solid var(--accent); border-color:var(--accent); }
+    .check { display:flex; align-items:center; gap:.5rem; margin:1rem 0; font-size:.85rem; color:var(--text); }
+    .check input { width:auto; }
+    .err { color:var(--red); font-size:.82rem; min-height:1.2em; margin:.5rem 0; }
+    .ok { color:var(--green); font-size:.82rem; }
+    .hint { font-size:.75rem; color:var(--muted); margin-top:.75rem; }
+  </style>
+</head>
+<body>
+  <div id="setupOverlay" class="overlay">
+    <form class="modal" id="credForm" autocomplete="off">
+      <h2>Connect your Alpaca paper account</h2>
+      <p>This deploy does not ship API keys. Paste <strong>your</strong> paper trading keys from the Alpaca dashboard. Keys stay in this server’s memory only — not in the repo.</p>
+      <label class="field" for="apiKey">API Key ID</label>
+      <input id="apiKey" name="api_key" type="password" required placeholder="PK…" />
+      <label class="field" for="apiSecret">API Secret Key</label>
+      <input id="apiSecret" name="api_secret" type="password" required placeholder="••••••••" />
+      <label class="field" for="account">Expected account (optional)</label>
+      <input id="account" name="expected_account" type="text" placeholder="Auto-filled after connect (PAxxxxx)" />
+      <label class="field" for="gemini">Gemini API key (optional)</label>
+      <input id="gemini" name="gemini_key" type="password" placeholder="For smarter debate / news" />
+      <label class="field" for="openai">OpenAI API key (optional)</label>
+      <input id="openai" name="openai_key" type="password" placeholder="Fallback LLM" />
+      <label class="check"><input id="armed" type="checkbox" /> Arm live paper orders (NEXUS_ARMED)</label>
+      <div id="credErr" class="err"></div>
+      <button type="submit" id="connectBtn">Connect &amp; continue</button>
+      <p class="hint">Paper trading only. Get keys at <a href="https://app.alpaca.markets/paper/dashboard/overview" target="_blank" rel="noopener" style="color:var(--accent)">app.alpaca.markets</a>.</p>
+    </form>
+  </div>
+
+  <header>
+    <div>
+      <h1><span>Nexus</span> Agent</h1>
+      <p style="margin:.2rem 0 0;color:var(--muted);font-size:.82rem">MCP options · Lifecycle · History · Feedback loop</p>
+    </div>
+    <div class="metrics">
+      <div class="metric"><label>Equity</label><strong id="equity">—</strong></div>
+      <div class="metric"><label>Day P&L</label><strong id="pnl">—</strong></div>
+      <div class="metric"><label>Feedback</label><strong id="feedback">—</strong></div>
+      <div class="metric"><label>Status</label><strong id="status">…</strong></div>
+      <div class="metric"><label>Account</label><strong id="accountLabel" style="font-size:.85rem">not connected</strong></div>
+    </div>
+    <div class="metrics" style="width:100%;margin-top:.25rem">
+      <div class="metric" style="flex:1;min-width:280px"><label>Regime / Feedback</label><strong id="feedbackDetail" style="font-size:.82rem;font-weight:500">—</strong></div>
+    </div>
+  </header>
+  <main>
+    <aside>
+      <div class="card">
+        <h2>Controls</h2>
+        <button id="btnRun" onclick="runOnce()" disabled>Run Once</button>
+        <button id="btnStart" onclick="startAgent()" disabled>Start</button>
+        <button class="secondary" onclick="stopAgent()">Stop</button>
+        <button class="secondary" id="btnProof" onclick="buildProof()" disabled>Build Proof</button>
+        <button class="secondary" id="btnDisconnect" onclick="disconnect()" disabled>Disconnect keys</button>
+        <button class="secondary" id="btnReconnect" onclick="showSetup()">Change keys</button>
+        <p style="font-size:.75rem;color:var(--muted);margin-top:.75rem">Users bring their own paper keys via the setup form.</p>
+      </div>
+      <div class="card">
+        <h2>Decisions</h2>
+        <div id="decisions">Loading…</div>
+      </div>
+    </aside>
+    <section class="card">
+      <h2>Live Event Log</h2>
+      <div id="log"></div>
+    </section>
+  </main>
+  <script>
+    const log = document.getElementById('log');
+    let configured = false;
+
+    function addRow(type, msg, sym) {
+      const d = document.createElement('div');
+      d.className = 'row';
+      const color = type.includes('error')||type.includes('risk') ? 'var(--red)' : type.includes('order') ? 'var(--green)' : type.includes('debate') ? '#a78bfa' : 'inherit';
+      d.style.color = color;
+      d.textContent = `[${new Date().toLocaleTimeString()}] ${sym?sym+' · ':''}${msg}`;
+      log.prepend(d);
+    }
+
+    function setConfigured(ok, meta={}) {
+      configured = !!ok;
+      document.getElementById('setupOverlay').classList.toggle('hidden', configured);
+      ['btnRun','btnStart','btnProof','btnDisconnect'].forEach(id => {
+        document.getElementById(id).disabled = !configured;
+      });
+      const acct = meta.account || '';
+      document.getElementById('accountLabel').textContent = acct || (configured ? 'connected' : 'not connected');
+      if (configured) {
+        document.getElementById('status').textContent = meta.armed ? 'armed · paper' : 'dry-run · paper';
+      } else {
+        document.getElementById('status').textContent = 'needs keys';
+      }
+    }
+
+    function showSetup() {
+      document.getElementById('setupOverlay').classList.remove('hidden');
+    }
+
+    async function refreshCredentials() {
+      const j = await (await fetch('/api/credentials')).json();
+      setConfigured(j.configured, j);
+      return j;
+    }
+
+    document.getElementById('credForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = document.getElementById('credErr');
+      const btn = document.getElementById('connectBtn');
+      err.textContent = '';
+      btn.disabled = true;
+      btn.textContent = 'Validating…';
+      try {
+        const body = {
+          api_key: document.getElementById('apiKey').value.trim(),
+          api_secret: document.getElementById('apiSecret').value.trim(),
+          expected_account: document.getElementById('account').value.trim(),
+          armed: document.getElementById('armed').checked,
+          gemini_key: document.getElementById('gemini').value.trim(),
+          openai_key: document.getElementById('openai').value.trim(),
+        };
+        const r = await fetch('/api/credentials', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const j = await r.json();
+        if (!r.ok) {
+          const d = j.detail;
+          throw new Error(typeof d === 'string' ? d : (Array.isArray(d) ? d.map(x=>x.msg||x).join('; ') : 'Connect failed'));
+        }
+        document.getElementById('apiKey').value = '';
+        document.getElementById('apiSecret').value = '';
+        document.getElementById('gemini').value = '';
+        document.getElementById('openai').value = '';
+        if (j.account) document.getElementById('account').value = j.account;
+        setConfigured(true, j);
+        addRow('credentials', `Connected account ${j.account || ''}`, null);
+        loadDecisions(); loadPortfolio(); loadFeedback();
+      } catch (ex) {
+        err.textContent = ex.message || String(ex);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Connect & continue';
+      }
+    });
+
+    async function disconnect() {
+      await fetch('/api/credentials', { method: 'DELETE' });
+      setConfigured(false, {});
+      addRow('credentials', 'Keys cleared from this server', null);
+    }
+
+    async function loadPortfolio() {
+      const r = await fetch('/api/portfolio');
+      const j = await r.json();
+      if (j.equity != null) {
+        document.getElementById('equity').textContent = '$' + Number(j.equity).toLocaleString(undefined,{maximumFractionDigits:0});
+        const pnl = Number(j.daily_pnl_pct||0);
+        const el = document.getElementById('pnl');
+        el.textContent = (pnl>=0?'+':'') + pnl.toFixed(2) + '%';
+        el.style.color = pnl>=0 ? 'var(--green)' : 'var(--red)';
+      }
+    }
+    async function loadFeedback() {
+      const j = await (await fetch('/api/feedback')).json();
+      if (j.summary) {
+        document.getElementById('feedback').textContent = j.scale_down ? 'caution' : 'normal';
+        document.getElementById('feedback').style.color = j.scale_down ? 'var(--amber)' : 'var(--green)';
+        document.getElementById('feedbackDetail').textContent = j.summary;
+      }
+    }
+    async function loadDecisions() {
+      const rows = await (await fetch('/api/decisions')).json();
+      const el = document.getElementById('decisions');
+      if (!rows.length) { el.textContent = 'No decisions yet.'; return; }
+      el.innerHTML = '<table><tr><th>Symbol</th><th>Strategy</th><th>Status</th></tr>' +
+        rows.slice(0,8).map(d => `<tr><td>${d.symbol}</td><td>${d.strategy||'-'}</td><td>${d.status}</td></tr>`).join('') + '</table>';
+    }
+    async function runOnce() {
+      if (!configured) return showSetup();
+      const r = await fetch('/api/agent/run-once',{method:'POST'});
+      if (r.status === 401) return showSetup();
+      loadDecisions(); loadPortfolio();
+    }
+    async function startAgent() {
+      if (!configured) return showSetup();
+      const r = await fetch('/api/agent/start',{method:'POST'});
+      if (r.status === 401) return showSetup();
+      document.getElementById('status').textContent='running';
+    }
+    async function stopAgent() { await fetch('/api/agent/stop',{method:'POST'}); document.getElementById('status').textContent='stopped'; }
+    async function buildProof() {
+      if (!configured) return showSetup();
+      await fetch('/api/proof/build',{method:'POST'});
+      addRow('status','proof artifact requested');
+    }
+    const es = new EventSource('/api/stream');
+    es.onmessage = (e) => {
+      const ev = JSON.parse(e.data);
+      if (ev.type === 'connected') return;
+      addRow(ev.type, ev.message, ev.symbol);
+      if (['tick','order_filled','decision','feedback','analysis','credentials'].includes(ev.type)) { loadPortfolio(); loadDecisions(); loadFeedback(); }
+    };
+    refreshCredentials().then(() => {
+      loadDecisions(); loadPortfolio(); loadFeedback();
+    });
+    setInterval(loadPortfolio, 15000);
+    setInterval(loadFeedback, 15000);
+  </script>
+</body>
+</html>
